@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+backend/watchpage.db
+backend/dev_emails.log
+backend/test_fixtures/

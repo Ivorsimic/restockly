@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WatchPage — get alerted when any product restocks or drops in price</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    background: #fafafa;
+    color: #1a1a1a;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #111; color: #eee; }
+    .card { background: #1c1c1c !important; border-color: #333 !important; }
+    input { background: #222 !important; color: #eee !important; border-color: #444 !important; }
+    table { color: #eee; }
+    th { background: #222 !important; }
+    td { border-color: #333 !important; }
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .sub { color: #666; margin-bottom: 28px; }
+  .card { background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  label { display: block; font-size: .85rem; margin: 12px 0 4px; font-weight: 600; }
+  input {
+    width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px;
+    font-size: .95rem; box-sizing: border-box;
+  }
+  button {
+    background: #4a7cff; color: white; border: none; padding: 11px 18px;
+    border-radius: 8px; font-size: .95rem; cursor: pointer; margin-top: 16px;
+  }
+  button.danger { background: #c0392b; padding: 6px 10px; font-size: .8rem; margin: 0; }
+  button.secondary { background: #777; padding: 6px 10px; font-size: .8rem; margin: 0; }
+  .table-scroll { overflow-x: auto; margin-top: 10px; }
+  table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: .88rem; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
+  th { background: #f2f2f2; }
+  .muted { color: #888; font-size: .85rem; }
+  .error { color: #c0392b; margin-top: 10px; }
+  .success { color: #2bb673; margin-top: 10px; }
+  .actions { display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+  <h1>👀 WatchPage</h1>
+  <p class="sub">Paste any product page — a rare plant shop, an indie sneaker drop, a small-batch brand, literally anywhere. We check it in the background and email you the moment it's back in stock or the price drops. Big trackers only cover the top 100 retailers; we cover the small store you actually care about.</p>
+
+  <div class="card">
+    <label>Product URL</label>
+    <input type="url" id="urlInput" placeholder="https://example-store.com/product/cool-thing" required>
+    <label>Your email</label>
+    <input type="email" id="emailInput" placeholder="you@email.com" required>
+    <label>Alert me when price drops to (optional)</label>
+    <input type="number" id="priceInput" placeholder="e.g. 49.99" step="0.01">
+    <button id="addBtn">Watch this page</button>
+    <p id="addMsg"></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Plans</h3>
+    <label>Your email (to check/upgrade your plan)</label>
+    <input type="email" id="planEmail" placeholder="you@email.com">
+    <button id="planLookupBtn">Check my plan</button>
+    <p class="muted" id="currentPlanMsg"></p>
+    <div class="table-scroll">
+    <table id="plansTable">
+      <thead><tr><th>Plan</th><th>Watches</th><th>Check speed</th><th>Price</th><th></th></tr></thead>
+      <tbody id="plansBody"></tbody>
+    </table>
+    </div>
+    <p id="upgradeMsg" class="success"></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Your watches</h3>
+    <label>Email to look up</label>
+    <input type="email" id="lookupEmail" placeholder="you@email.com">
+    <button id="lookupBtn">Show my watches</button>
+    <div class="table-scroll">
+    <table id="watchTable" style="display:none">
+      <thead><tr><th>URL</th><th>Price</th><th>Stock</th><th>Checked</th><th></th></tr></thead>
+      <tbody id="watchBody"></tbody>
+    </table>
+    </div>
+    <p class="muted" id="watchMsg"></p>
+  </div>
+
+<script>
+const API = "";
+
+document.getElementById("addBtn").addEventListener("click", async () => {
+  const url = document.getElementById("urlInput").value.trim();
+  const email = document.getElementById("emailInput").value.trim();
+  const priceVal = document.getElementById("priceInput").value;
+  const msg = document.getElementById("addMsg");
+  msg.className = ""; msg.textContent = "Checking the page...";
+
+  try {
+    const res = await fetch(API + "/api/watches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url, email,
+        target_price: priceVal ? parseFloat(priceVal) : null
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msg.className = "error";
+      msg.textContent = data.detail || "Something went wrong.";
+      return;
+    }
+    msg.className = "success";
+    msg.textContent = `Watching! Detected price: ${data.detected_price ?? "unknown"}, in stock: ${data.detected_in_stock ?? "unknown"}.`;
+    document.getElementById("urlInput").value = "";
+    document.getElementById("priceInput").value = "";
+  } catch (e) {
+    msg.className = "error";
+    msg.textContent = "Network error.";
+  }
+});
+
+async function loadWatches() {
+  const email = document.getElementById("lookupEmail").value.trim();
+  const table = document.getElementById("watchTable");
+  const body = document.getElementById("watchBody");
+  const watchMsg = document.getElementById("watchMsg");
+  if (!email) return;
+
+  const res = await fetch(API + `/api/watches?email=${encodeURIComponent(email)}`);
+  const rows = await res.json();
+
+  if (!rows.length) {
+    table.style.display = "none";
+    watchMsg.textContent = "No watches yet for this email.";
+    return;
+  }
+  watchMsg.textContent = "";
+  table.style.display = "table";
+  body.innerHTML = rows.map(w => `
+    <tr>
+      <td><a href="${w.url}" target="_blank">${w.url.slice(0, 40)}...</a>${w.target_price ? ` (alert ≤ ${w.target_price})` : ""}</td>
+      <td>${w.last_price ?? "?"}</td>
+      <td>${w.last_in_stock === 1 ? "✅ in stock" : w.last_in_stock === 0 ? "❌ out" : "?"}</td>
+      <td>${w.last_checked_at ? new Date(w.last_checked_at).toLocaleString() : "pending"}</td>
+      <td class="actions">
+        <button class="secondary" onclick="checkNow(${w.id}, '${email}')">Check now</button>
+        <button class="danger" onclick="removeWatch(${w.id}, '${email}')">Remove</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function checkNow(id, email) {
+  await fetch(API + `/api/watches/${id}/check-now?email=${encodeURIComponent(email)}`, { method: "POST" });
+  loadWatches();
+}
+
+async function removeWatch(id, email) {
+  await fetch(API + `/api/watches/${id}?email=${encodeURIComponent(email)}`, { method: "DELETE" });
+  loadWatches();
+}
+
+document.getElementById("lookupBtn").addEventListener("click", loadWatches);
+
+let currentPlanEmail = null;
+
+async function loadPlans() {
+  const res = await fetch(API + "/api/plans");
+  const plans = await res.json();
+  const body = document.getElementById("plansBody");
+  body.innerHTML = Object.entries(plans).map(([id, p]) => `
+    <tr>
+      <td><strong>${p.label}</strong></td>
+      <td>${p.watch_limit >= 999 ? "Unlimited" : p.watch_limit}</td>
+      <td>every ${p.check_interval_minutes} min</td>
+      <td>${p.price_eur === 0 ? "Free" : "€" + p.price_eur + "/mo"}</td>
+      <td>${id === "free" ? "" : `<button class="secondary" onclick="upgrade('${id}')">Upgrade</button>`}</td>
+    </tr>
+  `).join("");
+}
+
+async function checkMyPlan() {
+  const email = document.getElementById("planEmail").value.trim();
+  if (!email) return;
+  currentPlanEmail = email;
+  const res = await fetch(API + `/api/me?email=${encodeURIComponent(email)}`);
+  const data = await res.json();
+  document.getElementById("currentPlanMsg").textContent = `Current plan: ${data.label} (${data.watch_limit} watches, checks every ${data.check_interval_minutes} min)`;
+}
+
+async function upgrade(planId) {
+  if (!currentPlanEmail) {
+    alert("Enter your email above first (Check my plan).");
+    return;
+  }
+  const res = await fetch(API + `/api/checkout/${planId}?email=${encodeURIComponent(currentPlanEmail)}`, { method: "POST" });
+  const data = await res.json();
+  const msg = document.getElementById("upgradeMsg");
+  if (data.checkout_url) {
+    window.location.href = data.checkout_url;
+  } else if (data.dev_mode) {
+    await fetch(API + data.activate_url, { method: "POST" });
+    msg.textContent = `${data.message} You're now on the ${planId} plan.`;
+    checkMyPlan();
+  }
+}
+
+document.getElementById("planLookupBtn").addEventListener("click", checkMyPlan);
+loadPlans();
+</script>
+</body>
+</html>
