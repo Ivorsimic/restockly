@@ -290,7 +290,7 @@ footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
       </label>
       <label>Poruka<textarea name="poruka" rows="3"></textarea></label>
       <button class="btn primary" type="submit">Pošalji upit</button>
-      <p class="ok" id="ok">Hvala! Otvorio se vaš e-mail program – pošaljite poruku da dovršite upit.</p>
+      <p class="ok" id="ok" role="status"></p>
     </form>
   </div>
 </section>
@@ -318,13 +318,23 @@ document.getElementById('chips').addEventListener('click',e=>{
   setTimeout(()=>add(answers[q],'bot'),700);
 });
 
-// ---- Kontakt forma (mailto dok nema backenda) ----
-document.getElementById('form').addEventListener('submit',e=>{
+// ---- Kontakt forma -> C++ server (POST /api/kontakt) ----
+document.getElementById('form').addEventListener('submit',async e=>{
   e.preventDefault();
-  const f=new FormData(e.target);
-  const body=[...f.entries()].map(([k,v])=>k+": "+v).join("\n");
-  location.href="mailto:info@vasa-domena.hr?subject="+encodeURIComponent("Upit za Glasnik AI – "+f.get('tvrtka'))+"&body="+encodeURIComponent(body);
-  document.getElementById('ok').style.display='block';
+  const form=e.target, msg=document.getElementById('ok'), btn=form.querySelector('button');
+  btn.disabled=true; msg.style.display='none';
+  try{
+    const r=await fetch('/api/kontakt',{method:'POST',body:new URLSearchParams(new FormData(form))});
+    const j=await r.json();
+    if(!r.ok||!j.ok) throw new Error(j.error||'Greška');
+    msg.style.color='';
+    msg.textContent='Hvala! Vaš upit je zaprimljen, javit ćemo se unutar 24 sata.';
+    form.reset();
+  }catch(err){
+    msg.style.color='var(--warn)';
+    msg.textContent=(err.message&&err.message!=='Failed to fetch'?err.message:'Slanje nije uspjelo. Pokrenite stranicu preko servera i pokušajte ponovno.');
+  }
+  msg.style.display='block'; btn.disabled=false;
 });
 </script>
 </body>
