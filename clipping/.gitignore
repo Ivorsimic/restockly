@@ -1,0 +1,5 @@
+work/
+output/
+.venv/
+*.mp4
+*.wav
