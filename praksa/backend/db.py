@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 DB_PATH = os.environ.get("DB_PATH", "praksa.db")
+SCHEMA_VERSION = 2
+MANUAL_SOURCE = "Objavljeno ovdje"
 
 
 def now() -> str:
@@ -23,8 +25,12 @@ def get_conn():
 
 def init_db():
     with get_conn() as conn:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version != SCHEMA_VERSION:
+            # v1 was a prototype with foreign sources; nothing worth migrating.
+            conn.executescript("DROP TABLE IF EXISTS internships; DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS fetch_runs;")
         conn.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS internships (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT NOT NULL,
@@ -32,27 +38,37 @@ def init_db():
                 title TEXT NOT NULL,
                 company TEXT,
                 location TEXT,
+                city TEXT,
                 remote INTEGER NOT NULL DEFAULT 0,
                 kind TEXT NOT NULL,
+                category TEXT,
+                pay TEXT,
+                work_period TEXT,
                 tags TEXT,
                 url TEXT,
                 description TEXT,
                 posted_at TEXT,
+                expires_at TEXT,
                 first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
                 contact_email TEXT,
-                approved INTEGER NOT NULL DEFAULT 1,
+                active INTEGER NOT NULL DEFAULT 1,       -- 0 = removed at the source
+                approved INTEGER NOT NULL DEFAULT 1,     -- 0 = company post waiting for moderation
+                moderation_token TEXT,
                 UNIQUE(source, external_id)
             );
-            CREATE INDEX IF NOT EXISTS idx_internships_seen ON internships(first_seen_at);
+            CREATE INDEX IF NOT EXISTS idx_internships_visible ON internships(active, approved, expires_at);
 
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL,
                 keywords TEXT,
-                location TEXT,
-                remote_only INTEGER NOT NULL DEFAULT 0,
+                city TEXT,
+                category TEXT,
                 kind TEXT,
+                remote_only INTEGER NOT NULL DEFAULT 0,
                 token TEXT NOT NULL UNIQUE,
+                confirmed INTEGER NOT NULL DEFAULT 0,    -- double opt-in
                 created_at TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1
             );
@@ -63,76 +79,106 @@ def init_db():
                 new_count INTEGER NOT NULL,
                 status TEXT
             );
+            PRAGMA user_version = {SCHEMA_VERSION};
             """
         )
         conn.commit()
 
 
-def upsert_internships(jobs: list[dict]) -> list[dict]:
-    """Insert unseen jobs; return only the newly inserted ones (with their id)."""
-    new = []
-    ts = now()
+JOB_FIELDS = ["title", "company", "location", "city", "remote", "kind", "category", "pay", "work_period", "tags",
+              "url", "description", "posted_at", "expires_at"]
+
+
+def sync_source(source: str, jobs: list[dict], full_sync: bool) -> list[dict]:
+    """Insert new postings, refresh existing ones, and (for full-sync sources) deactivate postings
+    that disappeared from the source. Returns newly inserted jobs."""
+    new, ts = [], now()
     with get_conn() as conn:
         for j in jobs:
+            values = [int(bool(j.get(f))) if f == "remote" else j.get(f) for f in JOB_FIELDS]
             cur = conn.execute(
-                """INSERT OR IGNORE INTO internships
-                   (source, external_id, title, company, location, remote, kind, tags, url, description,
-                    posted_at, first_seen_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (j["source"], j["external_id"], j["title"], j.get("company"), j.get("location"),
-                 int(bool(j.get("remote"))), j["kind"], j.get("tags"), j.get("url"), j.get("description"),
-                 j.get("posted_at"), ts),
+                f"""INSERT INTO internships (source, external_id, {", ".join(JOB_FIELDS)}, first_seen_at, last_seen_at)
+                    VALUES (?, ?, {", ".join("?" * len(JOB_FIELDS))}, ?, ?)
+                    ON CONFLICT(source, external_id) DO NOTHING""",
+                [source, j["external_id"], *values, ts, ts],
             )
             if cur.rowcount:
                 new.append({**j, "id": cur.lastrowid})
+            else:
+                conn.execute(
+                    f"""UPDATE internships SET {", ".join(f"{f} = ?" for f in JOB_FIELDS)}, last_seen_at = ?, active = 1
+                        WHERE source = ? AND external_id = ?""",
+                    [*values, ts, source, j["external_id"]],
+                )
+        if full_sync and jobs:
+            conn.execute("UPDATE internships SET active = 0 WHERE source = ? AND last_seen_at < ?", (source, ts))
         conn.commit()
     return new
 
 
-def add_manual_internship(data: dict) -> int:
+# ---------- company posts + moderation ----------
+
+def add_manual_internship(data: dict) -> tuple[int, str]:
+    token = secrets.token_urlsafe(16)
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO internships
-               (source, external_id, title, company, location, remote, kind, tags, url, description,
-                posted_at, first_seen_at, contact_email, approved)
-               VALUES ('Objavljeno ovdje', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
-            (secrets.token_hex(8), data["title"], data["company"], data.get("location"),
-             int(bool(data.get("remote"))), data.get("kind", "praksa"), data.get("tags"), data.get("url"),
-             data.get("description"), now(), now(), data.get("contact_email")),
+            f"""INSERT INTO internships (source, external_id, {", ".join(JOB_FIELDS)}, first_seen_at, last_seen_at,
+                                         contact_email, approved, moderation_token)
+                VALUES (?, ?, {", ".join("?" * len(JOB_FIELDS))}, ?, ?, ?, 0, ?)""",
+            [MANUAL_SOURCE, secrets.token_hex(8),
+             *[int(bool(data.get(f))) if f == "remote" else data.get(f) for f in JOB_FIELDS],
+             now(), now(), data.get("contact_email"), token],
         )
         conn.commit()
-        return cur.lastrowid
+        return cur.lastrowid, token
 
 
-def _search_clause(q: str | None, location: str | None, remote_only: bool, kind: str | None,
-                   source: str | None = None):
-    where, params = ["approved = 1"], []
+def moderate(token: str, approve: bool) -> dict | None:
+    """Approve or reject a pending company post. Returns the post if the token was valid and pending."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM internships WHERE moderation_token = ? AND approved = 0 AND active = 1", (token,)
+        ).fetchone()
+        if not row:
+            return None
+        if approve:
+            conn.execute("UPDATE internships SET approved = 1, posted_at = ? WHERE id = ?", (now(), row["id"]))
+        else:
+            conn.execute("UPDATE internships SET active = 0 WHERE id = ?", (row["id"],))
+        conn.commit()
+        return dict(row)
+
+
+def pending_posts():
+    with get_conn() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM internships WHERE approved = 0 AND active = 1 ORDER BY id").fetchall()]
+
+
+# ---------- search ----------
+
+VISIBLE = "active = 1 AND approved = 1 AND (expires_at IS NULL OR expires_at > ?)"
+
+
+def search(q=None, city=None, category=None, kind=None, remote_only=False, source=None, limit=30, offset=0):
+    where, params = [VISIBLE], [now()]
     for word in (q or "").split():
-        where.append("(title LIKE ? OR company LIKE ? OR tags LIKE ? OR description LIKE ?)")
-        params += [f"%{word}%"] * 4
-    if location:
-        where.append("location LIKE ?")
-        params.append(f"%{location}%")
+        where.append("(title LIKE ? OR company LIKE ? OR tags LIKE ? OR description LIKE ? OR location LIKE ?)")
+        params += [f"%{word}%"] * 5
+    for col, val in (("city", city), ("category", category), ("kind", kind), ("source", source)):
+        if val:
+            where.append(f"{col} = ?")
+            params.append(val)
     if remote_only:
         where.append("remote = 1")
-    if kind:
-        where.append("kind = ?")
-        params.append(kind)
-    if source:
-        where.append("source = ?")
-        params.append(source)
-    return " AND ".join(where), params
-
-
-def search(q=None, location=None, remote_only=False, kind=None, source=None, limit=50, offset=0):
-    clause, params = _search_clause(q, location, remote_only, kind, source)
+    clause = " AND ".join(where)
     with get_conn() as conn:
         total = conn.execute(f"SELECT COUNT(*) FROM internships WHERE {clause}", params).fetchone()[0]
         rows = conn.execute(
-            f"""SELECT id, source, title, company, location, remote, kind, tags, url, description,
-                       posted_at, first_seen_at, contact_email
+            f"""SELECT id, source, title, company, location, city, remote, kind, category, pay, work_period, tags,
+                       url, description, posted_at, expires_at, first_seen_at, contact_email
                 FROM internships WHERE {clause}
-                ORDER BY COALESCE(posted_at, first_seen_at) DESC LIMIT ? OFFSET ?""",
+                ORDER BY (kind = 'praksa') DESC, COALESCE(posted_at, first_seen_at) DESC LIMIT ? OFFSET ?""",
             params + [limit, offset],
         ).fetchall()
     return total, [dict(r) for r in rows]
@@ -140,11 +186,14 @@ def search(q=None, location=None, remote_only=False, kind=None, source=None, lim
 
 def stats():
     with get_conn() as conn:
-        by_source = conn.execute(
-            "SELECT source, COUNT(*) n FROM internships WHERE approved = 1 GROUP BY source ORDER BY n DESC"
-        ).fetchall()
+        def grouped(col):
+            return {r[0]: r[1] for r in conn.execute(
+                f"SELECT {col}, COUNT(*) n FROM internships WHERE {VISIBLE} AND {col} IS NOT NULL "
+                f"GROUP BY {col} ORDER BY n DESC", (now(),)).fetchall()}
+        out = {"by_source": grouped("source"), "by_city": grouped("city"), "by_kind": grouped("kind")}
         last = conn.execute("SELECT ran_at, new_count, status FROM fetch_runs ORDER BY id DESC LIMIT 1").fetchone()
-    return {"by_source": {r["source"]: r["n"] for r in by_source}, "last_fetch": dict(last) if last else None}
+    out["last_fetch"] = dict(last) if last else None
+    return out
 
 
 def log_fetch(new_count: int, status: str):
@@ -153,18 +202,25 @@ def log_fetch(new_count: int, status: str):
         conn.commit()
 
 
-# ---------- alerts ----------
+# ---------- alerts (double opt-in) ----------
 
-def create_alert(email, keywords, location, remote_only, kind) -> str:
+def create_alert(email, keywords, city, category, kind, remote_only) -> str:
     token = secrets.token_urlsafe(16)
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO alerts (email, keywords, location, remote_only, kind, token, created_at)
-               VALUES (?,?,?,?,?,?,?)""",
-            (email, keywords, location, int(remote_only), kind, token, now()),
+            """INSERT INTO alerts (email, keywords, city, category, kind, remote_only, token, created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (email, keywords, city, category, kind, int(remote_only), token, now()),
         )
         conn.commit()
     return token
+
+
+def confirm_alert(token: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE alerts SET confirmed = 1 WHERE token = ? AND active = 1", (token,))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def deactivate_alert(token: str) -> bool:
@@ -176,4 +232,4 @@ def deactivate_alert(token: str) -> bool:
 
 def active_alerts():
     with get_conn() as conn:
-        return [dict(r) for r in conn.execute("SELECT * FROM alerts WHERE active = 1").fetchall()]
+        return [dict(r) for r in conn.execute("SELECT * FROM alerts WHERE active = 1 AND confirmed = 1").fetchall()]

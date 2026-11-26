@@ -1,17 +1,30 @@
-# 🎓 Praksa — tražilica studentskih praksi
+# 🎓 Praksa — studentske prakse u Hrvatskoj
 
-Web aplikacija koja na jednom mjestu skuplja **studentske prakse i studentske poslove**, omogućuje pretragu i filtriranje, te šalje **obavijest na mail** kad se pojavi nova praksa koja odgovara spremljenoj pretrazi. Tvrtke mogu i same besplatno objaviti praksu.
+Web aplikacija koja na jednom mjestu skuplja **studentske prakse i studentske poslove iz Hrvatske**, omogućuje pretragu po gradu i području te šalje **obavijest na mail** kad se pojavi novi oglas koji odgovara spremljenoj pretrazi. Tvrtke mogu i same besplatno objaviti praksu, a objava ide nakon odobrenja.
 
-## Što radi
+## Izvori oglasa (samo Hrvatska)
 
-- **Automatsko prikupljanje oglasa** svakih 60 min (podesivo) iz besplatnih javnih API-ja:
-  - [Arbeitnow](https://www.arbeitnow.com) (Europa, uglavnom DE/FR/NL, najviše praksi)
-  - [Remotive](https://remotive.com) (remote, poziva se najviše svakih 6 h, kako izvor traži)
-  - [Remote OK](https://remoteok.com) (remote; uvjeti korištenja traže link natrag, a on je u podnožju stranice)
-- **Prepoznavanje praksi**: od svih oglasa zadržavaju se samo oni namijenjeni studentima (intern, internship, praksa, praktikant, Praktikum, trainee, stage/alternance, Werkstudent, working student, studentski…). Svaki oglas označava se kao *Praksa* ili *Studentski posao*.
-- **Pretraga**: ključne riječi, lokacija, vrsta, izvor, samo remote, s paginacijom.
-- **Obavijesti na mail**: student unese mail i kriterije te dobiva sažetak novih oglasa. Svaki mail ima link za odjavu.
-- **Objava prakse** za tvrtke (forma, bez registracije). Objavljena praksa odmah ide studentima s odgovarajućim obavijestima.
+Koriste se samo izvori koji svoje oglase objavljuju za strojno čitanje. Svaki oglas vodi na izvornu objavu.
+
+| Izvor | Kako | Što daje |
+|---|---|---|
+| **Studentski centar Zagreb** | javni WordPress REST API (`/wp-json/wp/v2/jobs`) | oko 600 aktivnih studentskih poslova: tvrtka, adresa, satnica, razdoblje rada, rok prijave, opis |
+| **Studentski centar Dubrovnik** | javni WordPress REST API (`/wp-json/wp/v2/student_poslovi`) | studentski poslovi iz zadnjih 45 dana (samo naslov i kategorija) |
+| **Posao.hr** | službeni RSS feed | najnoviji oglasi, filtrirani na prakse i oglase za studente |
+| **Objave tvrtki** | forma na stranici | prakse iz cijele Hrvatske, objavljuju se nakon odobrenja |
+
+Oglasi se dohvaćaju svakih 60 min (`FETCH_INTERVAL_MINUTES`). Oglasi kojima je istekao rok prijave ili koje je SC Zagreb maknuo automatski se skrivaju.
+
+Svaki oglas dobiva:
+- **vrstu**: *Praksa* (praksa, stručna praksa, intern, trainee…) ili *Studentski posao*
+- **grad**: prepoznaje se iz adrese
+- **područje**: IT, Marketing, Administracija, Trgovina, Ugostiteljstvo i turizam, Skladište/proizvodnja, Instrukcije, Ostalo
+
+## Funkcije
+
+- **Pretraga**: ključne riječi, grad, područje, vrsta, izvor, rad od kuće. Prakse se prikazuju prve.
+- **Obavijesti na mail s potvrdom (double opt-in)**: student dobije link za potvrdu, a tek nakon potvrde prima obavijesti. Svaki mail ima link za odjavu.
+- **Objava za tvrtke uz moderaciju**: oglas nije javan dok ga admin ne odobri. Admin dobije mail s linkom na stranicu s gumbima *Odobri* i *Odbij*. Odluka ide preko POST-a, pa je skeneri linkova u mailu ne mogu slučajno odobriti. Tvrtka dobije potvrdu primitka i obavijest o objavi.
 
 ## Pokretanje lokalno
 
@@ -19,28 +32,30 @@ Web aplikacija koja na jednom mjestu skuplja **studentske prakse i studentske po
 cd praksa/backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # opcionalno
+cp .env.example .env        # upiši barem ADMIN_EMAIL i ADMIN_TOKEN
 uvicorn main:app --port 8002
 ```
-Otvori http://127.0.0.1:8002. Prvo dohvaćanje oglasa traje desetak sekundi.
+Otvori http://127.0.0.1:8002. Prvo dohvaćanje traje 10-20 sekundi.
 
-Bez email ključeva aplikacija radi u **dev načinu**: mailovi se ne šalju nego zapisuju u `backend/dev_emails.log`. Za pravo slanje dodaj `RESEND_API_KEY` ([resend.com](https://resend.com), besplatno) ili SMTP podatke u `.env`.
+Bez email ključeva aplikacija radi u **dev načinu**: mailovi (i linkovi za potvrdu i odobravanje) zapisuju se u `backend/dev_emails.log`. Za pravo slanje dodaj `RESEND_API_KEY` ([resend.com](https://resend.com), besplatno) ili SMTP podatke.
 
 ## API
 
 | Metoda | Putanja | Opis |
 |---|---|---|
-| GET | `/api/internships?q=&location=&kind=praksa\|studentski&remote=true&source=&page=` | pretraga |
-| POST | `/api/internships` | objava prakse (tvrtke) |
-| POST | `/api/alerts` | uključi obavijest na mail |
-| GET | `/api/alerts/unsubscribe/{token}` | odjava |
-| GET | `/api/stats` | broj oglasa po izvoru, zadnje dohvaćanje |
-| POST | `/api/admin/fetch` | ručno dohvaćanje (header `X-Admin-Token` = `ADMIN_TOKEN`) |
+| GET | `/api/internships?q=&city=&category=&kind=praksa\|studentski&remote=true&source=&page=` | pretraga |
+| GET | `/api/meta` | gradovi, područja, izvori, brojke |
+| POST | `/api/internships` | objava tvrtke (čeka odobrenje) |
+| POST | `/api/alerts` | nova obavijest (šalje mail za potvrdu) |
+| GET | `/api/alerts/confirm/{token}`, `/api/alerts/unsubscribe/{token}` | potvrda / odjava |
+| GET/POST | `/api/admin/moderate/{token}` | pregled / odobravanje oglasa (link iz maila) |
+| GET | `/api/admin/pending` | oglasi koji čekaju (header `X-Admin-Token`) |
+| POST | `/api/admin/fetch` | ručno dohvaćanje (header `X-Admin-Token`) |
 
-## Ograničenja i sljedeći koraci
+## Što još nedostaje za više hrvatskih oglasa
 
-1. **Hrvatski oglasi**: javni API-ji imaju uglavnom oglase iz zapadne Europe i remote oglase. Hrvatske stranice (MojPosao, Posao.hr, studentski-poslovi.hr, studentski centri) nemaju javni API, a scrapanje je krhko i vjerojatno protivno njihovim uvjetima. Bolje ih je kontaktirati za partnerstvo/feed. Dotad oglase iz Hrvatske pokriva forma "Objavi praksu", pa se isplati obratiti tvrtkama i fakultetima (karijerni centri).
-2. **Moderacija**: objave tvrtki odmah su javne. Za javno pokretanje dodaj potvrdu maila ili ručno odobravanje (stupac `approved` već postoji).
-3. **Potvrda pretplate (double opt-in)** za obavijesti, da netko ne može upisati tuđi mail.
-4. Komercijalna upotreba Arbeitnow API-ja po njihovim uvjetima zahtijeva dogovor s njima.
-5. Deploy: isto kao Restockly (Render/Fly.io, `Procfile` je spreman, root direktorij `praksa/backend`). SQLite se na besplatnom Renderu briše pri redeployu, pa za produkciju treba prijeći na Postgres.
+1. **Ostali studentski centri** (Split, Rijeka, Osijek, Zadar, Pula, Varaždin) nemaju javni API ili ga nisam našao. Dodavanje novog izvora svodi se na jednu funkciju u `sources.py`.
+2. **MojPosao i studentski-poslovi.hr** najveći su oglasnici, ali nemaju javni feed. Scrapanje bi bilo krhko i vjerojatno protivno njihovim uvjetima, pa je bolje zatražiti partnerstvo ili feed.
+3. **Karijerni centri fakulteta** (npr. FER, EFZG, FFZG) često objavljuju prakse. Isplati ih se kontaktirati da objavljuju i ovdje ili da daju RSS.
+4. **Zaštita od spama**: za javno pokretanje dodaj rate-limit ili captchu na forme.
+5. **Deploy**: `Procfile` je spreman (Render/Fly.io, root direktorij `praksa/backend`). Za produkciju prebaci SQLite na Postgres.
