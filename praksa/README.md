@@ -1,30 +1,50 @@
 # 🎓 Praksa — studentske prakse u Hrvatskoj
 
-Web aplikacija koja na jednom mjestu skuplja **studentske prakse i studentske poslove iz Hrvatske**, omogućuje pretragu po gradu i području te šalje **obavijest na mail** kad se pojavi novi oglas koji odgovara spremljenoj pretrazi. Tvrtke mogu i same besplatno objaviti praksu, a objava ide nakon odobrenja.
+Tražilica **isključivo studentskih praksi u Hrvatskoj**. Ima tri dijela:
 
-## Izvori oglasa (samo Hrvatska)
+1. **Otvorene prakse**: oglasi koji su trenutno otvoreni, automatski prikupljeni iz više izvora.
+2. **Programi praksi**: ručno provjeren katalog godišnjih programa (HNB, HANFA, Infobip, ENT Summer Camp, IAESTE…) s oznakom kada se obično prijavljuje.
+3. **Obavijesti na mail**: za nove prakse i kad se otvore prijave za programe iz tvog područja.
 
-Koriste se samo izvori koji svoje oglase objavljuju za strojno čitanje. Svaki oglas vodi na izvornu objavu.
+## Zašto ovo ne postoji
 
-| Izvor | Kako | Što daje |
+Istraženo u studenom 2026.:
+- **Studentski.hr** prakse objavljuje kao članke, bez pretrage i filtera.
+- **DING** i **Starter (eSTUDENT)** sadrže samo oglase svojih partnera.
+- **MojPosao** ima filter "Praksa", ali miješa prakse s ostalim poslovima.
+- Inicijativa HUP-a i EBRD-a te MladiRade više ne rade.
+- Fakulteti vode svaki svoj popis.
+
+Nitko ne skuplja prakse iz svih izvora i ne prati kada se otvaraju godišnji programi.
+
+## Izvori otvorenih praksi
+
+Koriste se samo izvori koji to dopuštaju, a svaki oglas vodi na izvornu objavu.
+
+| Izvor | Kako | Napomena |
 |---|---|---|
-| **Studentski centar Zagreb** | javni WordPress REST API (`/wp-json/wp/v2/jobs`) | oko 600 aktivnih studentskih poslova: tvrtka, adresa, satnica, razdoblje rada, rok prijave, opis |
-| **Studentski centar Dubrovnik** | javni WordPress REST API (`/wp-json/wp/v2/student_poslovi`) | studentski poslovi iz zadnjih 45 dana (samo naslov i kategorija) |
-| **Posao.hr** | službeni RSS feed | najnoviji oglasi, filtrirani na prakse i oglase za studente |
-| **Objave tvrtki** | forma na stranici | prakse iz cijele Hrvatske, objavljuju se nakon odobrenja |
+| **Infobip** | javni Workday API stranice za zapošljavanje, filter Hrvatska | ~15 praksi (Zagreb, Split, Rijeka, Vodnjan) |
+| **Rimac Group** | stranica karijera | internshipi u Zagrebu |
+| **Studentski centar Zagreb** | javni WordPress API | samo oglasi koji su prakse |
+| **Posao.hr** | službeni RSS | samo prakse; feed ima zadnjih 30 oglasa |
+| **FESB, EFOS, Sveučilište u Rijeci** | RSS kategorija "Prakse" / "Karijere" | obavijesti fakulteta o praksama, vidljive 120 dana |
+| **Objave tvrtki** | forma na stranici | objavljuju se nakon odobrenja admina |
 
-Oglasi se dohvaćaju svakih 60 min (`FETCH_INTERVAL_MINUTES`). Oglasi kojima je istekao rok prijave ili koje je SC Zagreb maknuo automatski se skrivaju.
+**Namjerno se NE preuzimaju** MojPosao i Studentski.hr: njihovi uvjeti korištenja izričito zabranjuju prenošenje sadržaja bez pisane suglasnosti. Za njih treba dogovoriti partnerstvo.
 
-Svaki oglas dobiva:
-- **vrstu**: *Praksa* (praksa, stručna praksa, intern, trainee…) ili *Studentski posao*
-- **grad**: prepoznaje se iz adrese
-- **područje**: IT, Marketing, Administracija, Trgovina, Ugostiteljstvo i turizam, Skladište/proizvodnja, Instrukcije, Ostalo
+### Kako dodati novu tvrtku
 
-## Funkcije
+- **Workday** (npr. Infobip): na stranici karijera tvrtke pronađi link oblika `https://<tenant>.wdN.myworkdayjobs.com/en-US/<Site>/job/...` i dodaj redak u `WORKDAY_EMPLOYERS` u `backend/sources.py`. Filter za Hrvatsku pronalazi se automatski.
+- **RSS fakulteta**: dodaj redak u `FACULTY_FEEDS`.
+- **Bilo koji drugi izvor**: jedna funkcija u `sources.py` koja vraća listu oglasa, plus redak u `FETCHERS`.
 
-- **Pretraga**: ključne riječi, grad, područje, vrsta, izvor, rad od kuće. Prakse se prikazuju prve.
-- **Obavijesti na mail s potvrdom (double opt-in)**: student dobije link za potvrdu, a tek nakon potvrde prima obavijesti. Svaki mail ima link za odjavu.
-- **Objava za tvrtke uz moderaciju**: oglas nije javan dok ga admin ne odobri. Admin dobije mail s linkom na stranicu s gumbima *Odobri* i *Odbij*. Odluka ide preko POST-a, pa je skeneri linkova u mailu ne mogu slučajno odobriti. Tvrtka dobije potvrdu primitka i obavijest o objavi.
+## Katalog programa praksi (`backend/programs.json`)
+
+Za svaki program se bilježi: organizacija, opis, područja, gradovi, plaćeno ili ne, trajanje, uvjeti, mjeseci prijava (`window_months`: lista mjeseci, `"all"` ili `null`), napomena o rokovima, službeni link i **izvori podataka**. Status se računa iz mjeseca u godini: "otvoreno sada", "uskoro", "tijekom cijele godine" ili "obično u…".
+
+Kad mjesec prijava za program počne, svi pretplatnici čiji kriteriji odgovaraju programu dobiju **jednu** obavijest godišnje.
+
+Katalog treba održavati: jednom godišnje provjeri rokove i dodaj nove programe. Svaki unos mora imati izvor.
 
 ## Pokretanje lokalno
 
@@ -35,27 +55,34 @@ pip install -r requirements.txt
 cp .env.example .env        # upiši barem ADMIN_EMAIL i ADMIN_TOKEN
 uvicorn main:app --port 8002
 ```
-Otvori http://127.0.0.1:8002. Prvo dohvaćanje traje 10-20 sekundi.
+Otvori http://127.0.0.1:8002. Prvo dohvaćanje traje oko 30 sekundi.
 
-Bez email ključeva aplikacija radi u **dev načinu**: mailovi (i linkovi za potvrdu i odobravanje) zapisuju se u `backend/dev_emails.log`. Za pravo slanje dodaj `RESEND_API_KEY` ([resend.com](https://resend.com), besplatno) ili SMTP podatke.
+Bez email ključeva aplikacija radi u **dev načinu**: mailovi (s linkovima za potvrdu i odobravanje) zapisuju se u `backend/dev_emails.log`. Za pravo slanje dodaj `RESEND_API_KEY` ([resend.com](https://resend.com)) ili SMTP podatke.
+
+## Funkcije
+
+- Pretraga otvorenih praksi po ključnim riječima, gradu, području, izvoru, plaćenosti i radu od kuće
+- Istekli oglasi i oni koje je izvor maknuo automatski se skrivaju. Ako izvor privremeno ne radi, njegovi oglasi ostaju vidljivi.
+- Obavijesti na mail s potvrdom pretplate (double opt-in) i odjavom jednim klikom
+- Objave tvrtki se prikazuju tek nakon odobrenja. Admin dobije link na stranicu s gumbima *Odobri* i *Odbij*; odluka ide preko POST-a, pa je skeneri linkova ne mogu slučajno odobriti.
 
 ## API
 
 | Metoda | Putanja | Opis |
 |---|---|---|
-| GET | `/api/internships?q=&city=&category=&kind=praksa\|studentski&remote=true&source=&page=` | pretraga |
+| GET | `/api/internships?q=&city=&category=&paid=true&remote=true&source=&page=` | otvorene prakse |
+| GET | `/api/programs` | katalog programa sa statusom |
 | GET | `/api/meta` | gradovi, područja, izvori, brojke |
 | POST | `/api/internships` | objava tvrtke (čeka odobrenje) |
 | POST | `/api/alerts` | nova obavijest (šalje mail za potvrdu) |
 | GET | `/api/alerts/confirm/{token}`, `/api/alerts/unsubscribe/{token}` | potvrda / odjava |
-| GET/POST | `/api/admin/moderate/{token}` | pregled / odobravanje oglasa (link iz maila) |
-| GET | `/api/admin/pending` | oglasi koji čekaju (header `X-Admin-Token`) |
-| POST | `/api/admin/fetch` | ručno dohvaćanje (header `X-Admin-Token`) |
+| GET/POST | `/api/admin/moderate/{token}` | pregled / odobravanje oglasa |
+| GET | `/api/admin/pending`, POST `/api/admin/fetch` | header `X-Admin-Token` |
 
-## Što još nedostaje za više hrvatskih oglasa
+## Sljedeći koraci
 
-1. **Ostali studentski centri** (Split, Rijeka, Osijek, Zadar, Pula, Varaždin) nemaju javni API ili ga nisam našao. Dodavanje novog izvora svodi se na jednu funkciju u `sources.py`.
-2. **MojPosao i studentski-poslovi.hr** najveći su oglasnici, ali nemaju javni feed. Scrapanje bi bilo krhko i vjerojatno protivno njihovim uvjetima, pa je bolje zatražiti partnerstvo ili feed.
-3. **Karijerni centri fakulteta** (npr. FER, EFZG, FFZG) često objavljuju prakse. Isplati ih se kontaktirati da objavljuju i ovdje ili da daju RSS.
-4. **Zaštita od spama**: za javno pokretanje dodaj rate-limit ili captchu na forme.
-5. **Deploy**: `Procfile` je spreman (Render/Fly.io, root direktorij `praksa/backend`). Za produkciju prebaci SQLite na Postgres.
+1. **Više tvrtki na Workdayu i sličnim sustavima.** Za svaku veliku tvrtku koja zapošljava studente u Hrvatskoj treba pronaći koji sustav koristi. Svaka dodana tvrtka su nove prakse bez ručnog rada.
+2. **Proširiti katalog** na 50 i više programa: Big 4, A1, INA, Podravka, Pliva, Končar, ministarstva, EU institucije za studente.
+3. **Partnerstva**: MojPosao, DING, studentski-poslovi.hr i karijerni centri fakulteta za feed praksi.
+4. **Fakulteti**: zamoliti karijerne centre da objavljuju ovdje ili daju RSS svoje kategorije praksi.
+5. **Deploy**: `Procfile` je spreman (Render/Fly.io, root `praksa/backend`); za produkciju prebaci SQLite na Postgres i dodaj rate-limit na forme.

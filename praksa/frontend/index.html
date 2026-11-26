@@ -4,15 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Praksa — studentske prakse u Hrvatskoj</title>
-<meta name="description" content="Studentske prakse i studentski poslovi iz cijele Hrvatske na jednom mjestu, uz obavijesti na mail.">
+<meta name="description" content="Sve studentske prakse u Hrvatskoj na jednom mjestu: aktualni oglasi, godišnji programi praksi i obavijesti na mail.">
 <style>
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1a1d23; --muted: #5f6672; --line: #e2e5ea;
-    --accent: #c8102e; --accent-soft: #fbe9ec; --blue: #2f5bea; --blue-soft: #e8eefd; --ok: #1d7a4a; --ok-soft: #e5f4ec;
+    --accent: #c8102e; --accent-soft: #fbe9ec; --blue: #2f5bea; --blue-soft: #e8eefd;
+    --ok: #1d7a4a; --ok-soft: #e5f4ec; --warn: #8a5a00; --warn-soft: #fdf2dc;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #111318; --card: #1a1d24; --text: #e8eaee; --muted: #9aa1ad; --line: #2b2f38;
-            --accent: #ff6b81; --accent-soft: #3a1f26; --blue: #7c9bff; --blue-soft: #232c45; --ok: #5fcf93; --ok-soft: #1c3328; }
+            --accent: #ff6b81; --accent-soft: #3a1f26; --blue: #7c9bff; --blue-soft: #232c45;
+            --ok: #5fcf93; --ok-soft: #1c3328; --warn: #f0c060; --warn-soft: #3a3020; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
@@ -40,25 +42,32 @@
   .tabs button { background: transparent; color: var(--muted); border: 1px solid transparent; }
   .tabs button.on { background: var(--accent-soft); color: var(--accent); }
   .meta { color: var(--muted); font-size: 13px; margin: 8px 0 12px; }
-  .job { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
-  .job.praksa { border-left: 4px solid var(--accent); }
-  .job h3 { margin: 0 0 2px; font-size: 16px; }
-  .job h3 a { color: var(--text); text-decoration: none; }
-  .job h3 a:hover { color: var(--accent); }
-  .job a { color: var(--blue); }
-  .job .co { color: var(--muted); }
-  .job .desc { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+  .card h3 { margin: 0 0 2px; font-size: 16px; }
+  .card h3 a { color: var(--text); text-decoration: none; }
+  .card h3 a:hover { color: var(--accent); }
+  .card a { color: var(--blue); }
+  .card .co { color: var(--muted); }
+  .card .desc { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; }
+  .card .desc.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 13.5px; }
+  .card dt { color: var(--muted); }
+  .card dd { margin: 0; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
   .b { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
-  .b.k { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
-  .b.s { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
   .b.pay { background: var(--ok-soft); color: var(--ok); border-color: transparent; font-weight: 600; }
+  .b.open { background: var(--ok-soft); color: var(--ok); border-color: transparent; font-weight: 600; }
+  .b.soon { background: var(--warn-soft); color: var(--warn); border-color: transparent; font-weight: 600; }
+  .b.live { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+  .src { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .src a { color: var(--muted); }
   .pager { display: flex; gap: 8px; justify-content: center; align-items: center; margin: 16px 0; }
   .msg { margin-top: 10px; font-size: 14px; }
   .hidden { display: none; }
+  .intro { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
   form.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   form.grid .full { grid-column: 1 / -1; }
-  @media (max-width: 600px) { form.grid { grid-template-columns: 1fr; } h1 { font-size: 24px; } select { flex: 1 1 45%; } }
+  @media (max-width: 600px) { form.grid { grid-template-columns: 1fr; } h1 { font-size: 24px; } .row select { flex: 1 1 45%; } }
   footer { padding-top: 8px; padding-bottom: 32px; color: var(--muted); font-size: 13px; }
   footer a { color: var(--muted); }
 </style>
@@ -66,28 +75,25 @@
 <body>
 <header>
   <h1>🎓 Praksa<span>.</span></h1>
-  <p>Studentske prakse i studentski poslovi iz cijele Hrvatske na jednom mjestu, uz obavijest na mail kad se pojavi nova.</p>
+  <p>Studentske prakse u Hrvatskoj na jednom mjestu: otvoreni oglasi, godišnji programi praksi i obavijest na mail kad se nešto otvori.</p>
   <div class="stats" id="stats"></div>
 </header>
 <main>
   <div class="tabs">
-    <button data-tab="search" class="on">Pretraga</button>
+    <button data-tab="live" class="on">Otvorene prakse</button>
+    <button data-tab="programs">📅 Programi praksi</button>
     <button data-tab="alert">🔔 Obavijesti na mail</button>
-    <button data-tab="post">➕ Objavi praksu (za tvrtke)</button>
+    <button data-tab="post">➕ Za tvrtke</button>
   </div>
 
-  <section id="tab-search">
+  <section id="tab-live">
     <div class="panel">
       <form id="search" class="row">
-        <input class="grow" type="text" name="q" placeholder="Ključne riječi: marketing, python, računovodstvo…">
+        <input class="grow" type="text" name="q" placeholder="Ključne riječi: marketing, python, financije…">
         <select name="city" data-fill="cities"><option value="">Cijela Hrvatska</option></select>
         <select name="category" data-fill="categories"><option value="">Sva područja</option></select>
-        <select name="kind">
-          <option value="">Prakse i studentski poslovi</option>
-          <option value="praksa">Samo prakse</option>
-          <option value="studentski">Samo studentski poslovi</option>
-        </select>
         <select name="source" data-fill="sources"><option value="">Svi izvori</option></select>
+        <label class="chk"><input type="checkbox" name="paid"> Samo plaćene</label>
         <label class="chk"><input type="checkbox" name="remote"> Rad od kuće</label>
         <button>Traži</button>
       </form>
@@ -97,20 +103,34 @@
     <div class="pager" id="pager"></div>
   </section>
 
+  <section id="tab-programs" class="hidden">
+    <p class="intro">Mnoge tvrtke i institucije prakse otvaraju jednom godišnje, a rokovi traju kratko. Ovdje su programi koje vrijedi pratiti i kada se za njih obično prijavljuje. <a href="#" data-goto="alert">Uključi obavijest</a> i javit ćemo ti kad se prijave otvore.</p>
+    <div class="panel">
+      <div class="row">
+        <select id="pStatus">
+          <option value="">Svi programi</option>
+          <option value="now">Prijave otvorene sada ili uskoro</option>
+        </select>
+        <select id="pCategory" data-fill="categories"><option value="">Sva područja</option></select>
+        <label class="chk"><input type="checkbox" id="pPaid"> Samo plaćeni</label>
+      </div>
+    </div>
+    <div id="programs"></div>
+  </section>
+
   <section id="tab-alert" class="hidden">
     <div class="panel">
-      <p style="margin-top:0">Odaberi što te zanima i javit ćemo ti mailom čim se pojavi novi oglas koji odgovara. Poslat ćemo ti link za potvrdu, a odjava je jednim klikom.</p>
+      <p style="margin-top:0">Javit ćemo ti mailom kad se pojavi nova praksa koja odgovara tvojoj pretrazi i kad se otvore prijave za programe praksi iz tvog područja. Prvo ti šaljemo link za potvrdu, a odjava je jednim klikom.</p>
       <form id="alert" class="grid">
         <input class="full" type="email" name="email" placeholder="tvoj@email.com" required>
-        <input type="text" name="keywords" placeholder="Ključne riječi (npr. marketing)">
+        <input type="text" name="keywords" placeholder="Ključne riječi (opcionalno)">
         <select name="city" data-fill="cities"><option value="">Cijela Hrvatska</option></select>
         <select name="category" data-fill="categories"><option value="">Sva područja</option></select>
-        <select name="kind">
-          <option value="">Prakse i studentski poslovi</option>
-          <option value="praksa">Samo prakse</option>
-          <option value="studentski">Samo studentski poslovi</option>
-        </select>
-        <label class="chk full"><input type="checkbox" name="remote_only"> Samo rad od kuće</label>
+        <div class="row">
+          <label class="chk"><input type="checkbox" name="paid_only"> Samo plaćene</label>
+          <label class="chk"><input type="checkbox" name="remote_only"> Rad od kuće</label>
+        </div>
+        <label class="chk full"><input type="checkbox" name="include_programs" checked> Javi mi i kad se otvore prijave za programe praksi</label>
         <div class="full"><button>Uključi obavijest</button></div>
       </form>
       <div class="msg" id="alertMsg"></div>
@@ -119,20 +139,21 @@
 
   <section id="tab-post" class="hidden">
     <div class="panel">
-      <p style="margin-top:0">Nudite praksu ili posao za studente? Objava je besplatna. Oglas pregledamo prije objave, a studenti s uključenom obavijesti dobit će ga na mail.</p>
+      <p style="margin-top:0">Nudite studentsku praksu? Objava je besplatna. Oglas pregledamo prije objave, a studenti s uključenom obavijesti dobit će ga na mail.</p>
       <form id="post" class="grid">
         <input class="full" type="text" name="title" placeholder="Naziv (npr. Praksa — Frontend developer)" required minlength="3">
-        <input type="text" name="company" placeholder="Tvrtka" required minlength="2">
+        <input type="text" name="company" placeholder="Tvrtka ili institucija" required minlength="2">
         <select name="city" data-fill="cities" required><option value="">Grad…</option></select>
-        <select name="kind">
-          <option value="praksa">Praksa</option>
-          <option value="studentski">Studentski posao</option>
-        </select>
         <select name="category" data-fill="categories"><option value="">Područje…</option></select>
-        <input type="text" name="pay" placeholder="Naknada (npr. 7 €/h ili neplaćena)">
+        <select name="paid">
+          <option value="">Je li praksa plaćena?</option>
+          <option value="true">Plaćena</option>
+          <option value="false">Neplaćena</option>
+        </select>
+        <input type="text" name="pay" placeholder="Naknada (npr. 7 €/h)">
         <input type="text" name="work_period" placeholder="Razdoblje (npr. 1.2.–30.4.2027.)">
         <input class="full" type="url" name="url" placeholder="Link na prijavu (opcionalno)">
-        <textarea class="full" name="description" rows="4" placeholder="Opis: što student radi, uvjeti, trajanje…"></textarea>
+        <textarea class="full" name="description" rows="4" placeholder="Opis: što student radi, za koji studij i godinu, trajanje, ECTS…"></textarea>
         <input type="email" name="contact_email" placeholder="Kontakt email za prijave" required>
         <label class="chk"><input type="checkbox" name="remote"> Moguć rad od kuće</label>
         <div class="full"><button>Pošalji na objavu</button></div>
@@ -142,7 +163,7 @@
   </section>
 </main>
 <footer>
-  <span id="sources"></span> Oglasi pripadaju izvornim objaviteljima i poveznice vode na izvorni oglas.
+  <span id="sources"></span> Oglasi pripadaju izvornim objaviteljima, a poveznice vode na izvorni oglas. Uvijek provjeri rok i uvjete na izvoru.
   <span id="lastFetch"></span>
 </footer>
 
@@ -150,12 +171,15 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '#';
-let page = 1;
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+let page = 1, programs = [];
 
-document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['search', 'alert', 'post'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
-});
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === name));
+  ['live', 'programs', 'alert', 'post'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== name));
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+document.addEventListener('click', e => { const g = e.target.closest('[data-goto]'); if (g) { e.preventDefault(); showTab(g.dataset.goto); scrollTo(0, 0); } });
 
 const fmtDate = iso => new Date(iso).toLocaleDateString('hr-HR', { day: 'numeric', month: 'numeric', year: 'numeric' });
 function ago(iso) {
@@ -170,22 +194,23 @@ const plural = (n, one, few, many) => {
   const m10 = n % 10, m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? one : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many);
 };
+const paidBadge = p => p === 1 || p === true ? '<span class="b pay">Plaćena</span>' : (p === 0 || p === false ? '<span class="b">Neplaćena</span>' : '');
 
-function card(j) {
+function jobCard(j) {
   const href = j.url ? safeUrl(j.url) : 'mailto:' + (j.contact_email || '');
-  const where = j.city && j.location && j.location !== j.city ? `${j.city} (${j.location})` : (j.city || j.location || '');
-  return `<article class="job ${j.kind}">
+  const where = j.city && j.location && j.location !== j.city && !j.location.startsWith(j.city) ? `${j.city} (${j.location})` : (j.location || j.city || '');
+  return `<article class="card">
     <h3><a href="${esc(href)}" target="_blank" rel="noopener">${esc(j.title)}</a></h3>
     <div class="co">${[j.company, where].filter(Boolean).map(esc).join(' · ')}</div>
-    ${j.description ? `<p class="desc">${esc(j.description)}</p>` : ''}
+    ${j.description ? `<p class="desc clamp">${esc(j.description)}</p>` : ''}
     ${j.contact_email ? `<div class="meta" style="margin:6px 0 0">Prijave: <a href="mailto:${esc(j.contact_email)}">${esc(j.contact_email)}</a></div>` : ''}
     <div class="badges">
-      <span class="b ${j.kind === 'praksa' ? 'k' : 's'}">${j.kind === 'praksa' ? 'Praksa' : 'Studentski posao'}</span>
+      ${paidBadge(j.paid)}
       ${j.pay ? `<span class="b pay">${esc(j.pay)}</span>` : ''}
-      ${j.category ? `<span class="b">${esc(j.category)}</span>` : ''}
+      ${j.category && j.category !== 'Ostalo' ? `<span class="b">${esc(j.category)}</span>` : ''}
       ${j.remote ? '<span class="b">Rad od kuće</span>' : ''}
       ${j.work_period ? `<span class="b">📅 ${esc(j.work_period)}</span>` : ''}
-      ${j.expires_at ? `<span class="b">Prijave do ${fmtDate(j.expires_at)}</span>` : ''}
+      ${j.expires_at && !/^Fakultet|FESB|EFOS|Sveučilište/.test(j.source) ? `<span class="b">Prijave do ${fmtDate(j.expires_at)}</span>` : ''}
       <span class="b">${esc(j.source)} · ${ago(j.posted_at || j.first_seen_at)}</span>
     </div>
   </article>`;
@@ -193,14 +218,13 @@ function card(j) {
 
 async function load() {
   const p = new URLSearchParams();
-  for (const [k, v] of new FormData($('#search'))) if (v) p.set(k, k === 'remote' ? 'true' : v);
+  for (const [k, v] of new FormData($('#search'))) if (v) p.set(k, ['paid', 'remote'].includes(k) ? 'true' : v);
   p.set('page', page);
   $('#meta').textContent = 'Učitavam…';
   const r = await fetch('/api/internships?' + p).then(r => r.json());
-  $('#meta').textContent = r.total ? `${r.total} ${plural(r.total, 'oglas', 'oglasa', 'oglasa')}` : '';
-  $('#results').innerHTML = r.items.length ? r.items.map(card).join('')
-    : `<div class="panel">Trenutno nema oglasa za ovu pretragu. <a href="#" id="toAlert">Uključi obavijest</a> i javit ćemo ti čim se pojavi.</div>`;
-  if ($('#toAlert')) $('#toAlert').onclick = e => { e.preventDefault(); copySearchToAlert(); document.querySelector('[data-tab=alert]').click(); };
+  $('#meta').textContent = r.total ? `${r.total} ${plural(r.total, 'otvorena praksa', 'otvorene prakse', 'otvorenih praksi')}` : '';
+  $('#results').innerHTML = r.items.length ? r.items.map(jobCard).join('')
+    : `<div class="panel">Trenutno nema otvorenih praksi za ovu pretragu. Pogledaj <a href="#" data-goto="programs">programe praksi</a> koji se otvaraju tijekom godine ili <a href="#" data-goto="alert">uključi obavijest</a>.</div>`;
   const pages = Math.ceil(r.total / r.per_page);
   $('#pager').innerHTML = pages > 1
     ? `<button class="ghost" ${page <= 1 ? 'disabled' : ''} id="prev">← Prethodna</button>
@@ -209,19 +233,45 @@ async function load() {
   if ($('#prev')) $('#prev').onclick = () => { page--; load(); scrollTo(0, 0); };
   if ($('#next')) $('#next').onclick = () => { page++; load(); scrollTo(0, 0); };
 }
-
-function copySearchToAlert() {
-  const s = $('#search'), a = $('#alert');
-  a.keywords.value = s.q.value; a.city.value = s.city.value; a.category.value = s.category.value;
-  a.kind.value = s.kind.value; a.remote_only.checked = s.remote.checked;
-}
-
 $('#search').onsubmit = e => { e.preventDefault(); page = 1; load(); };
 $('#search').onchange = e => { if (e.target.type !== 'text') { page = 1; load(); } };
 
+function programCard(p) {
+  const st = p.status.code;
+  const pill = st === 'open' || st === 'all' ? 'open' : (st === 'soon' ? 'soon' : '');
+  return `<article class="card">
+    <h3><a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">${esc(p.name)}</a></h3>
+    <div class="co">${esc(p.organization)}${p.cities.length ? ' · ' + p.cities.map(esc).join(', ') : ''}</div>
+    <p class="desc">${esc(p.description)}</p>
+    <dl>
+      ${p.duration ? `<dt>Trajanje</dt><dd>${esc(p.duration)}</dd>` : ''}
+      ${p.eligibility ? `<dt>Za koga</dt><dd>${esc(p.eligibility)}</dd>` : ''}
+      ${p.window_note ? `<dt>Prijave</dt><dd>${esc(p.window_note)}</dd>` : ''}
+    </dl>
+    <div class="badges">
+      <span class="b ${pill}">${esc(p.status.label)}</span>
+      ${p.open_now && ['open', 'all'].includes(st) ? `<a href="#" class="b live" data-company="${esc(p.live_source || p.organization)}">${p.open_now} ${plural(p.open_now, 'otvorena pozicija', 'otvorene pozicije', 'otvorenih pozicija')} →</a>` : ''}
+      ${paidBadge(p.paid)}
+      ${p.categories.filter(c => c !== 'Ostalo').map(c => `<span class="b">${esc(c)}</span>`).join('')}
+    </div>
+    <div class="src">Izvor podataka: ${p.sources.map(s => `<a href="${esc(safeUrl(s))}" target="_blank" rel="noopener">${esc(host(s))}</a>`).join(', ')}</div>
+  </article>`;
+}
+function renderPrograms() {
+  const st = $('#pStatus').value, cat = $('#pCategory').value, paid = $('#pPaid').checked;
+  const list = programs.filter(p =>
+    (!st || ['open', 'soon', 'all'].includes(p.status.code)) && (!cat || p.categories.includes(cat)) && (!paid || p.paid));
+  $('#programs').innerHTML = list.map(programCard).join('') || '<div class="panel">Nema programa za ovaj filter.</div>';
+}
+['#pStatus', '#pCategory', '#pPaid'].forEach(s => $(s).onchange = renderPrograms);
+$('#programs').addEventListener('click', e => {
+  const a = e.target.closest('[data-company]'); if (!a) return;
+  e.preventDefault(); $('#search').reset(); $('#search').q.value = a.dataset.company; page = 1; load(); showTab('live'); scrollTo(0, 0);
+});
+
 async function submitJson(form, url, msgEl, okText) {
   const body = {};
-  for (const [k, v] of new FormData(form)) if (v !== '') body[k] = v;
+  for (const [k, v] of new FormData(form)) if (v !== '') body[k] = v === 'true' ? true : v === 'false' ? false : v;
   form.querySelectorAll('input[type=checkbox]').forEach(c => body[c.name] = c.checked);
   const btn = form.querySelector('button'); btn.disabled = true;
   try {
@@ -233,7 +283,6 @@ async function submitJson(form, url, msgEl, okText) {
   } catch { msgEl.style.color = 'var(--accent)'; msgEl.textContent = 'Greška u vezi, pokušaj ponovno.'; }
   finally { btn.disabled = false; }
 }
-
 $('#alert').onsubmit = e => { e.preventDefault();
   submitJson(e.target, '/api/alerts', $('#alertMsg'), d =>
     '✓ Skoro gotovo! Poslali smo ti mail s linkom za potvrdu.' + (d.email_dev_mode ? ' (Dev način: mail je zapisan u dev_emails.log.)' : ''));
@@ -242,21 +291,23 @@ $('#post').onsubmit = e => { e.preventDefault();
   submitJson(e.target, '/api/internships', $('#postMsg'), () => '✓ Hvala! Oglas je zaprimljen i bit će objavljen nakon provjere.');
 };
 
-fetch('/api/meta').then(r => r.json()).then(m => {
+Promise.all([fetch('/api/meta').then(r => r.json()), fetch('/api/programs').then(r => r.json())]).then(([m, progs]) => {
+  programs = progs; renderPrograms();
   const opts = {
     cities: m.cities.map(c => [c, m.by_city[c] ? `${c} (${m.by_city[c]})` : c]),
-    categories: m.categories.map(c => [c, c]),
-    sources: m.sources.map(s => [s.name, s.name]),
+    categories: m.categories.map(c => [c, m.by_category[c] ? `${c} (${m.by_category[c]})` : c]),
+    sources: m.sources.filter(s => m.by_source[s.name]).map(s => [s.name, `${s.name} (${m.by_source[s.name]})`]),
   };
   document.querySelectorAll('select[data-fill]').forEach(sel => {
-    const withCounts = sel.closest('#search');
+    const withCounts = !!sel.closest('#search');
     opts[sel.dataset.fill].forEach(([v, label]) =>
       sel.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(withCounts ? label : v)}</option>`));
   });
-  const total = Object.values(m.by_source).reduce((a, b) => a + b, 0), prakse = m.by_kind.praksa || 0;
-  $('#stats').innerHTML = `<span class="stat"><b>${total}</b> aktivnih oglasa</span>
-    <span class="stat"><b>${prakse}</b> ${plural(prakse, 'praksa', 'prakse', 'praksi')}</span>
-    <span class="stat"><b>${Object.keys(m.by_city).length}</b> ${plural(Object.keys(m.by_city).length, 'grad', 'grada', 'gradova')}</span>`;
+  const total = Object.values(m.by_source).reduce((a, b) => a + b, 0);
+  const openProg = progs.filter(p => ['open', 'soon'].includes(p.status.code)).length;
+  $('#stats').innerHTML = `<span class="stat"><b>${total}</b> ${plural(total, 'otvorena praksa', 'otvorene prakse', 'otvorenih praksi')}</span>
+    <span class="stat"><b>${m.program_count}</b> ${plural(m.program_count, 'program', 'programa', 'programa')} praksi</span>
+    <span class="stat"><b>${openProg}</b> ${plural(openProg, 'program', 'programa', 'programa')} s prijavama sada ili uskoro</span>`;
   $('#sources').innerHTML = 'Izvori: ' + m.sources.map(s => s.url ? `<a href="${esc(s.url)}">${esc(s.name)}</a>` : esc(s.name)).join(', ') + '.';
   if (m.last_fetch) $('#lastFetch').textContent = `Zadnje osvježenje: ${new Date(m.last_fetch.ran_at).toLocaleString('hr-HR')}.`;
 });

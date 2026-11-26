@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 DB_PATH = os.environ.get("DB_PATH", "praksa.db")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MANUAL_SOURCE = "Objavljeno ovdje"
 
 
@@ -27,8 +27,9 @@ def init_db():
     with get_conn() as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version != SCHEMA_VERSION:
-            # v1 was a prototype with foreign sources; nothing worth migrating.
-            conn.executescript("DROP TABLE IF EXISTS internships; DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS fetch_runs;")
+            # Earlier versions were prototypes (foreign sources, student jobs); nothing worth migrating.
+            conn.executescript("DROP TABLE IF EXISTS internships; DROP TABLE IF EXISTS alerts; "
+                               "DROP TABLE IF EXISTS fetch_runs; DROP TABLE IF EXISTS program_notifications;")
         conn.executescript(
             f"""
             CREATE TABLE IF NOT EXISTS internships (
@@ -40,7 +41,7 @@ def init_db():
                 location TEXT,
                 city TEXT,
                 remote INTEGER NOT NULL DEFAULT 0,
-                kind TEXT NOT NULL,
+                paid INTEGER,                           -- 1 paid, 0 unpaid, NULL unknown
                 category TEXT,
                 pay TEXT,
                 work_period TEXT,
@@ -65,12 +66,21 @@ def init_db():
                 keywords TEXT,
                 city TEXT,
                 category TEXT,
-                kind TEXT,
+                paid_only INTEGER NOT NULL DEFAULT 0,
                 remote_only INTEGER NOT NULL DEFAULT 0,
+                include_programs INTEGER NOT NULL DEFAULT 1,
                 token TEXT NOT NULL UNIQUE,
                 confirmed INTEGER NOT NULL DEFAULT 0,    -- double opt-in
                 created_at TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1
+            );
+
+            -- one row per (program, year) once subscribers were told that applications opened
+            CREATE TABLE IF NOT EXISTS program_notifications (
+                program_id TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                sent_at TEXT NOT NULL,
+                PRIMARY KEY (program_id, year)
             );
 
             CREATE TABLE IF NOT EXISTS fetch_runs (
@@ -85,8 +95,20 @@ def init_db():
         conn.commit()
 
 
-JOB_FIELDS = ["title", "company", "location", "city", "remote", "kind", "category", "pay", "work_period", "tags",
+JOB_FIELDS = ["title", "company", "location", "city", "remote", "paid", "category", "pay", "work_period", "tags",
               "url", "description", "posted_at", "expires_at"]
+
+
+def _values(j: dict) -> list:
+    out = []
+    for f in JOB_FIELDS:
+        v = j.get(f)
+        if f == "remote":
+            v = int(bool(v))
+        elif f == "paid":
+            v = None if v is None else int(bool(v))
+        out.append(v)
+    return out
 
 
 def sync_source(source: str, jobs: list[dict], full_sync: bool) -> list[dict]:
@@ -95,7 +117,7 @@ def sync_source(source: str, jobs: list[dict], full_sync: bool) -> list[dict]:
     new, ts = [], now()
     with get_conn() as conn:
         for j in jobs:
-            values = [int(bool(j.get(f))) if f == "remote" else j.get(f) for f in JOB_FIELDS]
+            values = _values(j)
             cur = conn.execute(
                 f"""INSERT INTO internships (source, external_id, {", ".join(JOB_FIELDS)}, first_seen_at, last_seen_at)
                     VALUES (?, ?, {", ".join("?" * len(JOB_FIELDS))}, ?, ?)
@@ -126,7 +148,7 @@ def add_manual_internship(data: dict) -> tuple[int, str]:
                                          contact_email, approved, moderation_token)
                 VALUES (?, ?, {", ".join("?" * len(JOB_FIELDS))}, ?, ?, ?, 0, ?)""",
             [MANUAL_SOURCE, secrets.token_hex(8),
-             *[int(bool(data.get(f))) if f == "remote" else data.get(f) for f in JOB_FIELDS],
+             *_values(data),
              now(), now(), data.get("contact_email"), token],
         )
         conn.commit()
@@ -160,25 +182,27 @@ def pending_posts():
 VISIBLE = "active = 1 AND approved = 1 AND (expires_at IS NULL OR expires_at > ?)"
 
 
-def search(q=None, city=None, category=None, kind=None, remote_only=False, source=None, limit=30, offset=0):
+def search(q=None, city=None, category=None, paid_only=False, remote_only=False, source=None, limit=30, offset=0):
     where, params = [VISIBLE], [now()]
     for word in (q or "").split():
         where.append("(title LIKE ? OR company LIKE ? OR tags LIKE ? OR description LIKE ? OR location LIKE ?)")
         params += [f"%{word}%"] * 5
-    for col, val in (("city", city), ("category", category), ("kind", kind), ("source", source)):
+    for col, val in (("city", city), ("category", category), ("source", source)):
         if val:
             where.append(f"{col} = ?")
             params.append(val)
     if remote_only:
         where.append("remote = 1")
+    if paid_only:
+        where.append("paid = 1")
     clause = " AND ".join(where)
     with get_conn() as conn:
         total = conn.execute(f"SELECT COUNT(*) FROM internships WHERE {clause}", params).fetchone()[0]
         rows = conn.execute(
-            f"""SELECT id, source, title, company, location, city, remote, kind, category, pay, work_period, tags,
+            f"""SELECT id, source, title, company, location, city, remote, paid, category, pay, work_period, tags,
                        url, description, posted_at, expires_at, first_seen_at, contact_email
                 FROM internships WHERE {clause}
-                ORDER BY (kind = 'praksa') DESC, COALESCE(posted_at, first_seen_at) DESC LIMIT ? OFFSET ?""",
+                ORDER BY COALESCE(posted_at, first_seen_at) DESC LIMIT ? OFFSET ?""",
             params + [limit, offset],
         ).fetchall()
     return total, [dict(r) for r in rows]
@@ -190,7 +214,8 @@ def stats():
             return {r[0]: r[1] for r in conn.execute(
                 f"SELECT {col}, COUNT(*) n FROM internships WHERE {VISIBLE} AND {col} IS NOT NULL "
                 f"GROUP BY {col} ORDER BY n DESC", (now(),)).fetchall()}
-        out = {"by_source": grouped("source"), "by_city": grouped("city"), "by_kind": grouped("kind")}
+        out = {"by_source": grouped("source"), "by_city": grouped("city"), "by_category": grouped("category"),
+               "by_company": grouped("company"), "paid": grouped("paid")}
         last = conn.execute("SELECT ran_at, new_count, status FROM fetch_runs ORDER BY id DESC LIMIT 1").fetchone()
     out["last_fetch"] = dict(last) if last else None
     return out
@@ -204,13 +229,14 @@ def log_fetch(new_count: int, status: str):
 
 # ---------- alerts (double opt-in) ----------
 
-def create_alert(email, keywords, city, category, kind, remote_only) -> str:
+def create_alert(email, keywords, city, category, paid_only, remote_only, include_programs) -> str:
     token = secrets.token_urlsafe(16)
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO alerts (email, keywords, city, category, kind, remote_only, token, created_at)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (email, keywords, city, category, kind, int(remote_only), token, now()),
+            """INSERT INTO alerts (email, keywords, city, category, paid_only, remote_only, include_programs, token,
+                                   created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (email, keywords, city, category, int(paid_only), int(remote_only), int(include_programs), token, now()),
         )
         conn.commit()
     return token
@@ -233,3 +259,16 @@ def deactivate_alert(token: str) -> bool:
 def active_alerts():
     with get_conn() as conn:
         return [dict(r) for r in conn.execute("SELECT * FROM alerts WHERE active = 1 AND confirmed = 1").fetchall()]
+
+
+def program_notified(program_id: str, year: int) -> bool:
+    with get_conn() as conn:
+        return conn.execute("SELECT 1 FROM program_notifications WHERE program_id = ? AND year = ?",
+                            (program_id, year)).fetchone() is not None
+
+
+def mark_program_notified(program_id: str, year: int):
+    with get_conn() as conn:
+        conn.execute("INSERT OR IGNORE INTO program_notifications (program_id, year, sent_at) VALUES (?,?,?)",
+                     (program_id, year, now()))
+        conn.commit()
