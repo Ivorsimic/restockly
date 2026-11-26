@@ -5,3 +5,5 @@ __pycache__/
 backend/watchpage.db
 backend/dev_emails.log
 backend/test_fixtures/
+praksa/backend/praksa.db
+praksa/backend/dev_emails.log
